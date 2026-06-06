@@ -1,4 +1,5 @@
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect, APIRouter
+from fastapi.responses import JSONResponse
 import json
 import numpy as np
 import base64
@@ -15,6 +16,8 @@ model_manager: ModelManager = None
 STREAMING_CHUNK_SIZE = [0, 10, 5]
 SAMPLE_RATE = 16000
 CHUNK_STRIDE = STREAMING_CHUNK_SIZE[1] * 960  # 9600
+
+router = APIRouter()
 
 
 def set_model_manager(manager: ModelManager):
@@ -223,3 +226,102 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception("WebSocket 异常")
     finally:
         mgr.disconnect(websocket)
+
+
+WS_PROTOCOL_DOC = {
+    "endpoint": "/ws/stream",
+    "protocol": "WebSocket",
+    "description": (
+        "实时流式语音识别 WebSocket 接口。\n\n"
+        "连接地址: `ws://host:7860/ws/stream`（或 `wss://` 如已启用 HTTPS）\n\n"
+        "## 通信流程\n\n"
+        "```\n"
+        "客户端 → 服务端: config (JSON)\n"
+        "服务端 → 客户端: config_ack (JSON)\n"
+        "客户端 → 服务端: audio (JSON, 重复发送)\n"
+        "服务端 → 客户端: result (JSON, 每个音频块返回)\n"
+        "客户端 → 服务端: end (JSON)\n"
+        "服务端 → 客户端: result [is_final=true] (JSON)\n"
+        "```\n\n"
+        "## 客户端消息\n\n"
+        "### 1. config（必须第一条）\n"
+        "```json\n"
+        '{"type": "config", "model": "paraformer-streaming"}\n'
+        "```\n"
+        "- `model`: 模型 ID，可选 `sensevoice` / `paraformer` / `paraformer-streaming` / `funasr-nano`\n\n"
+        "### 2. audio（音频数据，重复发送）\n"
+        "```json\n"
+        '{"type": "audio", "data": "<base64 编码的 PCM int16 音频>"}\n'
+        "```\n"
+        "- 音频格式: 16kHz 单声道 PCM int16，base64 编码\n"
+        "- 流式模型: 每 600ms (9600 采样点) 处理一次\n"
+        "- 非流式模型: 缓冲 2 秒后处理\n\n"
+        "### 3. end（结束识别）\n"
+        "```json\n"
+        '{"type": "end"}\n'
+        "```\n\n"
+        "## 服务端消息\n\n"
+        "### config_ack（配置确认）\n"
+        "```json\n"
+        '{"type": "config_ack", "model": "paraformer-streaming", "streaming": true}\n'
+        "```\n\n"
+        "### result（识别结果）\n"
+        "```json\n"
+        '{"type": "result", "text": "当前文本", "is_final": false, "accumulated": "累积的全部文本"}\n'
+        "```\n"
+        "- `text`: 当前块识别文本\n"
+        "- `accumulated`: 从开始到当前的完整累积文本\n"
+        "- `is_final`: 是否最终结果（发送 `end` 后返回）\n\n"
+        "### error（错误）\n"
+        "```json\n"
+        '{"type": "error", "message": "错误描述"}\n'
+        "```\n\n"
+        "## JavaScript 示例\n\n"
+        "```javascript\n"
+        "const ws = new WebSocket('wss://host:7860/ws/stream');\n"
+        "ws.onopen = () => {\n"
+        "    ws.send(JSON.stringify({type: 'config', model: 'paraformer-streaming'}));\n"
+        "};\n"
+        "ws.onmessage = (e) => {\n"
+        "    const d = JSON.parse(e.data);\n"
+        '    if (d.type === "result") console.log("识别:", d.accumulated);\n'
+        "};\n"
+        "// 发送音频 (base64 编码的 16kHz PCM int16)\n"
+        "ws.send(JSON.stringify({type: 'audio', data: base64Audio}));\n"
+        "// 结束\n"
+        "ws.send(JSON.stringify({type: 'end'}));\n"
+        "```"
+    ),
+    "tags": ["WebSocket"],
+    "messages": {
+        "client": [
+            {"type": "config", "fields": {"model": "string (模型ID，必填)"}},
+            {"type": "audio", "fields": {"data": "string (base64 编码的 16kHz PCM int16 音频)"}},
+            {"type": "end", "fields": {}},
+        ],
+        "server": [
+            {"type": "config_ack", "fields": {"model": "string", "streaming": "boolean"}},
+            {"type": "result", "fields": {"text": "string", "is_final": "boolean", "accumulated": "string"}},
+            {"type": "error", "fields": {"message": "string"}},
+        ],
+    },
+    "models": [
+        {"id": "sensevoice", "name": "SenseVoice-Small", "streaming": False, "size": "1.5GB"},
+        {"id": "paraformer", "name": "Paraformer-zh", "streaming": False, "size": "2.0GB"},
+        {"id": "paraformer-streaming", "name": "Paraformer-zh-Streaming", "streaming": True, "size": "2.0GB"},
+        {"id": "funasr-nano", "name": "Fun-ASR-Nano", "streaming": False, "size": "3.0GB"},
+    ],
+}
+
+
+@router.get(
+    "/ws/info",
+    summary="WebSocket 流式识别协议文档",
+    description=(
+        "返回 `/ws/stream` WebSocket 接口的完整协议文档，包括消息格式、"
+        "通信流程、可用模型和代码示例。"
+    ),
+    tags=["WebSocket"],
+)
+async def ws_protocol_info():
+    return JSONResponse(content=WS_PROTOCOL_DOC)

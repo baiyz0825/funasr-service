@@ -62,7 +62,7 @@ import uvicorn
 from src.models.model_manager import ModelManager
 from src.api.openai import router as openai_router, set_model_manager as set_openai_manager
 from src.api.management import router as mgmt_router, set_model_manager as set_mgmt_manager
-from src.api.websocket import websocket_endpoint, set_model_manager as set_ws_manager
+from src.api.websocket import websocket_endpoint, router as ws_router, set_model_manager as set_ws_manager
 from src.api.log_stream import router as log_router, setup_log_streaming
 from src.api.config import router as config_router, load_config, set_model_manager as set_config_manager
 
@@ -111,6 +111,7 @@ app = FastAPI(
     tags=[
         {"name": "转录", "description": "音频转录相关接口"},
         {"name": "模型管理", "description": "模型加载/卸载/状态查询"},
+        {"name": "WebSocket", "description": "WebSocket 实时流式识别协议"},
         {"name": "日志", "description": "实时日志流"},
         {"name": "配置", "description": "服务配置管理"},
     ],
@@ -121,6 +122,7 @@ app.include_router(openai_router)
 app.include_router(mgmt_router)
 app.include_router(log_router)
 app.include_router(config_router)
+app.include_router(ws_router)
 app.add_api_websocket_route("/ws/stream", websocket_endpoint)
 
 # 启动日志 SSE 推送
