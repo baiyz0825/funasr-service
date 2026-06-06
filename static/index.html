@@ -337,6 +337,8 @@ function toast(m,t='ok',ms=3000){const e=document.createElement('div');e.classNa
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
   document.querySelectorAll('.tc').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));
+  // 切换到模型管理时刷新配置和模型状态
+  if(name==='model'){loadConfig();refreshModels();}
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.t)));
 
@@ -543,12 +545,20 @@ function toggleAutoLoad(id,checked){
 }
 
 $('btnSaveCfg').onclick=async()=>{
+  const btn=$('btnSaveCfg');btn.disabled=true;btn.textContent='保存中...';
   try{
     const r=await fetch('/v1/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentConfig)});
     const d=await r.json();
-    if(d.message)toast(d.message);
-    else toast('配置已保存');
-  }catch(e){toast('保存失败','err')}
+    if(r.ok&&d.data){
+      toast('配置已保存');
+      // 从服务器重新读取，确保配置确实持久化
+      currentConfig=d.data;
+      renderAutoLoad();
+    }else{
+      toast(d.error||d.detail||'保存失败','err');
+    }
+  }catch(e){toast('保存失败: '+e.message,'err')}
+  finally{btn.disabled=false;btn.textContent='保存配置'}
 };
 
 async function refreshModels(){
