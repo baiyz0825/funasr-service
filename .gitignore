@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Models cache
+models/
+!models/.gitkeep
+
+# Logs
+*.log
+funasr-service.log
+
+# Runtime config (generated on first save)
+config.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Deployment artifacts
+*.tar.gz

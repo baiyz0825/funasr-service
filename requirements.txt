@@ -1,0 +1,22 @@
+# 核心依赖
+funasr>=1.0.0
+modelscope>=1.0.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+websockets>=12.0
+python-multipart>=0.0.6
+
+# 音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# 工具
+numpy>=1.24.0
+pydantic>=2.0.0
+
+# PyTorch（平台相关，建议通过 deploy.sh install 安装以选择正确的版本）
+# macOS/CPU: pip install torch torchvision torchaudio
+# CUDA 12.1: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0

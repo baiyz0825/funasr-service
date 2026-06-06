@@ -1,0 +1,13 @@
+services:
+  funasr-service:
+    build: .
+    image: funasr-service:latest
+    container_name: funasr-service
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./models:/app/models
+      - ./config.json:/app/config.json
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

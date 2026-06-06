@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FunASR 语音转写服务</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column}
+
+/* Header */
+.hdr{background:#1e293b;border-bottom:1px solid #334155;padding:10px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.hdr h1{font-size:16px;font-weight:600}
+.hdr .ver{background:#3b82f6;font-size:10px;padding:2px 7px;border-radius:10px}
+.hdr .st{margin-left:auto;font-size:12px;color:#64748b}
+
+/* Main layout: content + log panel */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* Left content */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;background:#1e293b;border-bottom:1px solid #334155;padding:0 20px;overflow-x:auto;flex-shrink:0}
+.tab{padding:10px 16px;cursor:pointer;border-bottom:2px solid transparent;color:#94a3b8;font-size:12px;white-space:nowrap;transition:.2s}
+.tab:hover{color:#e2e8f0}
+.tab.active{color:#3b82f6;border-bottom-color:#3b82f6}
+.tc-wrap{flex:1;overflow-y:auto;padding:16px 20px}
+.tc{display:none;max-width:960px}
+.tc.active{display:block}
+
+/* Right log panel */
+.log-panel{width:360px;border-left:1px solid #334155;background:#0f172a;display:flex;flex-direction:column;flex-shrink:0}
+.log-panel .log-hdr{padding:10px 14px;background:#1e293b;border-bottom:1px solid #334155;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.log-panel .log-hdr h3{font-size:13px;flex:1}
+.log-panel .log-body{flex:1;overflow-y:auto;padding:8px 14px;font-family:"SF Mono",Monaco,Consolas,monospace;font-size:11px;line-height:1.6;color:#94a3b8;white-space:pre-wrap;word-break:break-all}
+.log-panel .log-body .lv-i{color:#38bdf8}.log-panel .log-body .lv-w{color:#fbbf24}.log-panel .log-body .lv-e{color:#f87171}.log-panel .log-body .lv-d{color:#64748b}
+.log-panel .log-body .log-ts{color:#475569;margin-right:6px}
+.log-panel .log-body .log-src{color:#818cf8;margin-right:4px}
+
+/* Components */
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:12px}
+.card h3{font-size:14px;margin-bottom:8px;color:#f1f5f9}
+.row{display:flex;gap:12px}
+.col{flex:1;min-width:0}
+.col2{flex:2;min-width:0}
+label{display:block;font-size:11px;color:#94a3b8;margin-bottom:4px}
+select,input[type=text],input[type=number]{width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:6px 8px;border-radius:4px;font-size:12px}
+select:focus,input:focus{outline:none;border-color:#3b82f6}
+textarea{width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:8px;border-radius:4px;font-size:12px;font-family:monospace;resize:vertical;min-height:180px}
+textarea:focus{outline:none;border-color:#3b82f6}
+.btn{padding:6px 12px;border:none;border-radius:4px;font-size:12px;cursor:pointer;transition:.2s;font-weight:500}
+.btn-p{background:#3b82f6;color:#fff}.btn-p:hover{background:#2563eb}.btn-p:disabled{background:#1e40af;opacity:.6;cursor:not-allowed}
+.btn-s{background:#10b981;color:#fff}.btn-s:hover{background:#059669}
+.btn-d{background:#ef4444;color:#fff}.btn-d:hover{background:#dc2626}
+.btn-g{background:#334155;color:#e2e8f0}.btn-g:hover{background:#475569}
+.btn-sm{padding:4px 8px;font-size:11px}
+.btn-grp{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.st-box{padding:5px 8px;border-radius:4px;font-size:11px;background:#0f172a;border:1px solid #334155}
+.st-box.rec{background:#7f1d1d;border-color:#ef4444;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.mic{width:64px;height:64px;border-radius:50%;border:3px solid #334155;background:#1e293b;color:#94a3b8;font-size:24px;cursor:pointer;transition:.3s;display:flex;align-items:center;justify-content:center;margin:10px auto}
+.mic:hover{border-color:#3b82f6;color:#3b82f6}
+.mic.rec{border-color:#ef4444;color:#ef4444;background:#7f1d1d;animation:pulse 1.5s infinite}
+.mic-st{text-align:center;font-size:11px;color:#94a3b8;margin-top:4px}
+.mt{width:100%;border-collapse:collapse;font-size:12px}
+.mt th{text-align:left;padding:6px 8px;background:#0f172a;color:#94a3b8;font-weight:500;border-bottom:1px solid #334155}
+.mt td{padding:6px 8px;border-bottom:1px solid #1e293b}
+.mt tr:hover td{background:#1e293b}
+.bd{background:#065f46;color:#6ee7b7;padding:2px 6px;border-radius:10px;font-size:10px}
+.bl{background:#1e40af;color:#93c5fd;padding:2px 6px;border-radius:10px;font-size:10px}
+.bn{background:#374151;color:#9ca3af;padding:2px 6px;border-radius:10px;font-size:10px}
+.rst{min-height:240px}
+.ap-s{margin-bottom:8px}
+.ap-m{display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px}
+.ap-get{background:#065f46;color:#6ee7b7}.ap-post{background:#1e40af;color:#93c5fd}.ap-ws{background:#7c3aed;color:#c4b5fd}
+.ap-p{font-family:monospace;font-size:12px}
+code{background:#0f172a;padding:1px 4px;border-radius:3px;font-size:11px}
+pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:11px;line-height:1.5;margin:4px 0}
+.scene-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;cursor:pointer;transition:.2s;text-align:center}
+.scene-card:hover{border-color:#3b82f6;transform:translateY(-2px)}
+.scene-card .icon{font-size:28px;margin-bottom:6px}
+.scene-card .title{font-size:13px;font-weight:600;margin-bottom:3px}
+.scene-card .desc{font-size:11px;color:#94a3b8}
+.scenes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;margin-left:4px}
+.tag-stream{background:#7c3aed20;color:#c4b5fd;border:1px solid #7c3aed}
+.tag-offline{background:#3b82f620;color:#93c5fd;border:1px solid #3b82f6}
+.toast{position:fixed;top:16px;right:380px;padding:8px 14px;border-radius:5px;font-size:12px;z-index:9999;animation:si .3s ease}
+.toast-ok{background:#065f46;color:#6ee7b7;border:1px solid #10b981}
+.toast-err{background:#7f1d1d;color:#fca5a5;border:1px solid #ef4444}
+@keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.hidden{display:none}
+@media(max-width:900px){.log-panel{display:none}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>FunASR 语音转写服务</h1>
+  <span class="ver">v1.0</span>
+  <span class="st" id="hdrSt">就绪</span>
+</div>
+
+<div class="main">
+<!-- 左侧内容 -->
+<div class="content">
+<div class="tabs">
+  <div class="tab active" data-t="home">首页</div>
+  <div class="tab" data-t="stream">实时转写</div>
+  <div class="tab" data-t="offline">离线识别</div>
+  <div class="tab" data-t="speaker">说话人分离</div>
+  <div class="tab" data-t="emotion">情感检测</div>
+  <div class="tab" data-t="models">模型管理</div>
+  <div class="tab" data-t="api">API 文档</div>
+</div>
+<div class="tc-wrap">
+
+<!-- 首页 -->
+<div class="tc active" id="tab-home">
+  <div class="card">
+    <h3>选择场景</h3>
+    <div class="scenes">
+      <div class="scene-card" onclick="switchTab('stream')"><div class="icon">&#127908;</div><div class="title">实时转写</div><div class="desc">麦克风输入，600ms延迟</div></div>
+      <div class="scene-card" onclick="switchTab('offline')"><div class="icon">&#128196;</div><div class="title">离线识别</div><div class="desc">上传音频，生成字幕</div></div>
+      <div class="scene-card" onclick="switchTab('speaker')"><div class="icon">&#128101;</div><div class="title">说话人分离</div><div class="desc">识别"谁说了什么"</div></div>
+      <div class="scene-card" onclick="switchTab('emotion')"><div class="icon">&#128522;</div><div class="title">情感检测</div><div class="desc">开心/悲伤/愤怒/中性</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>模型选择指南</h3>
+    <table class="mt">
+      <thead><tr><th>模型</th><th>场景</th><th>语言</th><th>速度</th></tr></thead>
+      <tbody>
+        <tr><td>Paraformer-Streaming<span class="tag tag-stream">流式</span></td><td>实时字幕</td><td>中文</td><td>实时</td></tr>
+        <tr><td>Paraformer<span class="tag tag-offline">离线</span></td><td>中文生产级</td><td>中/英</td><td>快</td></tr>
+        <tr><td>Fun-ASR-Nano<span class="tag tag-offline">离线</span></td><td>多语言/方言</td><td>31种</td><td>中等</td></tr>
+        <tr><td>SenseVoice<span class="tag tag-offline">离线</span></td><td>情感+事件</td><td>5种</td><td>极快</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>服务配置说明</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px">
+        <div style="font-weight:600;margin-bottom:4px;color:#38bdf8">模型下载目录</div>
+        <div style="color:#94a3b8;line-height:1.6">FunASR AutoModel 不支持 <code>cache_dir</code> 参数，通过环境变量控制下载路径：<br><code>MODELSCOPE_CACHE</code> - ModelScope 模型<br><code>HF_HOME</code> - HuggingFace 模型<br><br>默认下载到 <code>~/.cache/modelscope/</code>。如需自定义目录，启动前设置：<br><code>export MODELSCOPE_CACHE=/your/path</code></div>
+      </div>
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px">
+        <div style="font-weight:600;margin-bottom:4px;color:#38bdf8">CPU 多核推理</div>
+        <div style="color:#94a3b8;line-height:1.6">FunASR 默认仅使用 4 线程，本服务自动检测 CPU 物理核心数并配置（上限16线程）。<br><br>通过 <code>ncpu</code> 参数可手动控制：<br><code>POST /v1/config</code> 设置 <code>"ncpu": 8</code><br><br>建议值：<code>min(物理核心数, 16)</code></div>
+      </div>
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px">
+        <div style="font-weight:600;margin-bottom:4px;color:#38bdf8">多模型同时加载</div>
+        <div style="color:#94a3b8;line-height:1.6">支持同时加载多个模型（默认最多2个），不同场景使用不同模型无需切换。<br><br>资源不足时会提示卸载。可通过配置调整上限：<br><code>POST /v1/config</code> 设置 <code>"max_loaded": 3</code></div>
+      </div>
+      <div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px">
+        <div style="font-weight:600;margin-bottom:4px;color:#38bdf8">启动自动加载</div>
+        <div style="color:#94a3b8;line-height:1.6">在「模型管理」页面设置自动加载的模型，服务重启后自动加载。<br><br>配置持久化在 <code>config.json</code>，也可通过 API 管理：<br><code>GET/POST /v1/config</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 实时转写 -->
+<div class="tc" id="tab-stream">
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>实时语音转写 <span class="tag tag-stream">Paraformer-Streaming</span></h3>
+        <button class="mic" id="micBtn">&#127908;</button>
+        <div class="mic-st" id="micSt">点击麦克风开始录音</div>
+        <div class="st-box" id="rtSt" style="margin-top:8px">等待录音...</div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card"><h3>识别结果</h3><textarea id="rtRst" class="rst" placeholder="开始说话后，文字将实时显示..." readonly></textarea></div>
+    </div>
+  </div>
+</div>
+
+<!-- 离线识别 -->
+<div class="tc" id="tab-offline">
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>离线语音识别</h3>
+        <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="offFile" accept="audio/*,.wav,.mp3,.m4a,.flac" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
+        <div style="margin-bottom:8px"><label>识别模型</label>
+          <select id="offModel">
+            <option value="paraformer">Paraformer-zh (中文高精度)</option>
+            <option value="sensevoice">SenseVoice (情感+事件)</option>
+            <option value="funasr-nano">Fun-ASR-Nano (31种语言)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:8px"><label>输出格式</label>
+          <select id="offFmt">
+            <option value="text">纯文本</option>
+            <option value="srt">SRT 字幕</option>
+            <option value="vtt">WebVTT 字幕</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+        <button class="btn btn-p" id="offBtn" style="width:100%">开始识别</button>
+        <div class="st-box" id="offSt" style="margin-top:8px">等待上传...</div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card"><h3>识别结果</h3><textarea id="offRst" class="rst" readonly></textarea>
+        <div style="margin-top:8px"><button class="btn btn-s btn-sm" id="offDl" style="display:none">下载文件</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 说话人分离 -->
+<div class="tc" id="tab-speaker">
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>说话人分离</h3>
+        <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="spkFile" accept="audio/*,.wav,.mp3,.m4a" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
+        <div style="margin-bottom:8px"><label>识别模型</label>
+          <select id="spkModel">
+            <option value="sensevoice">SenseVoice + cam++ (推荐)</option>
+            <option value="paraformer">Paraformer + cam++</option>
+            <option value="funasr-nano">Fun-ASR-Nano + cam++</option>
+          </select>
+        </div>
+        <button class="btn btn-p" id="spkBtn" style="width:100%">开始分离</button>
+        <div class="st-box" id="spkSt" style="margin-top:8px">等待上传...</div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card"><h3>分离结果</h3><textarea id="spkRst" class="rst" readonly></textarea>
+        <div style="margin-top:8px"><button class="btn btn-s btn-sm" id="spkDl" style="display:none">下载 SRT</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 情感检测 -->
+<div class="tc" id="tab-emotion">
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>情感检测 <span class="tag tag-offline">SenseVoice</span></h3>
+        <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="emoFile" accept="audio/*,.wav,.mp3,.m4a" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
+        <button class="btn btn-p" id="emoBtn" style="width:100%">检测情感</button>
+        <div class="st-box" id="emoSt" style="margin-top:8px">等待上传...</div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card"><h3>检测结果</h3><textarea id="emoRst" class="rst" readonly></textarea></div>
+    </div>
+  </div>
+</div>
+
+<!-- 模型管理 -->
+<div class="tc" id="tab-models">
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>加载新模型</h3>
+        <div style="margin-bottom:8px"><label>选择模型</label>
+          <select id="mgM">
+            <option value="paraformer-streaming">Paraformer-Streaming (2.0GB, 流式)</option>
+            <option value="sensevoice">SenseVoice-Small (1.5GB, 情感+事件)</option>
+            <option value="paraformer">Paraformer-zh (2.0GB, 中文高精度)</option>
+            <option value="funasr-nano">Fun-ASR-Nano (3.0GB, 31种语言)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:8px"><label>推理设备</label>
+          <select id="mgDev"><option value="mps">MPS</option><option value="cpu">CPU</option><option value="cuda">CUDA</option></select>
+        </div>
+        <p style="color:#94a3b8;font-size:11px;margin-bottom:8px;">加载时自动从 ModelScope 下载（首次约需几分钟），进度可在右侧日志查看。</p>
+        <div class="btn-grp">
+          <button class="btn btn-s" id="btnLd">加载模型</button>
+        </div>
+        <div id="ldErr" style="color:#f87171;font-size:11px;margin-top:6px;display:none"></div>
+        <div style="margin-top:8px"><button class="btn btn-g btn-sm" id="btnRef">刷新状态</button></div>
+      </div>
+      <div class="card">
+        <h3>资源概览</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px"><label>已加载</label><div class="st-box" id="resCnt">0/0</div></div>
+          <div style="flex:1;min-width:120px"><label>活跃模型</label><div class="st-box" id="curM">无</div></div>
+          <div style="flex:1;min-width:120px"><label>推理设备</label><div class="st-box" id="curD">-</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>启动自动加载</h3>
+        <p style="color:#94a3b8;font-size:11px;margin-bottom:8px;">勾选的模型将在服务启动时自动加载，配置持久化到 config.json。</p>
+        <div id="autoLoadList"></div>
+        <div style="margin-top:8px"><button class="btn btn-s btn-sm" id="btnSaveCfg">保存配置</button></div>
+      </div>
+    </div>
+    <div class="col2">
+      <div class="card"><h3>已加载模型 <span id="loadedBadge" class="bl" style="display:none"></span></h3>
+        <div id="loadedList"></div>
+        <div id="loadedEmpty" style="color:#64748b;font-size:12px;padding:10px 0;">暂无已加载模型，请在左侧选择模型并加载。</div>
+      </div>
+      <div class="card"><h3>所有模型</h3>
+        <table class="mt"><thead><tr><th>模型</th><th>大小</th><th>描述</th><th>状态</th></tr></thead><tbody id="mtBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- API 文档 -->
+<div class="tc" id="tab-api">
+  <div style="border:1px solid #334155;border-radius:8px;overflow:hidden;height:calc(100vh - 160px)">
+    <iframe src="/docs" style="width:100%;height:100%;border:none;background:#fff" id="swaggerFrame"></iframe>
+  </div>
+</div>
+
+</div><!-- /tc-wrap -->
+</div><!-- /content -->
+
+<!-- 右侧日志面板 -->
+<div class="log-panel">
+  <div class="log-hdr">
+    <h3>服务日志</h3>
+    <span id="logCount" style="font-size:10px;color:#64748b">0</span>
+    <button class="btn btn-g btn-sm" onclick="clearLogs()">清空</button>
+  </div>
+  <div class="log-body" id="logBody"></div>
+</div>
+
+</div><!-- /main -->
+
+<script>
+const $=id=>document.getElementById(id);
+let logCount=0;
+
+function toast(m,t='ok',ms=3000){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),ms)}
+
+// Tab
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===name));
+  document.querySelectorAll('.tc').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchTab(t.dataset.t)));
+
+// ===== SSE 日志流 =====
+function initLogStream(){
+  const body=$('logBody');
+  const es=new EventSource('/api/logs/stream');
+  es.onmessage=e=>{
+    try{
+      const d=JSON.parse(e.data);
+      const cls='lv-'+(d.level==='warning'?'w':d.level==='error'?'e':d.level==='debug'?'d':'i');
+      const src=d.name&&d.name!=='root'?`<span class="log-src">[${d.name.replace('funasr-service.','')}]</span>`:'';
+      const div=document.createElement('div');
+      div.innerHTML=`<span class="log-ts">${d.time}</span><span class="${cls}">${src}${d.msg}</span>`;
+      body.appendChild(div);
+      logCount++;
+      $('logCount').textContent=logCount;
+      if(body.scrollHeight-body.scrollTop-body.clientHeight<80)body.scrollTop=body.scrollHeight;
+    }catch(err){}
+  };
+  es.onerror=()=>{
+    const div=document.createElement('div');
+    div.innerHTML=`<span class="lv-e">[连接断开，重连中...]</span>`;
+    body.appendChild(div);
+  };
+}
+function clearLogs(){$('logBody').innerHTML='';logCount=0;$('logCount').textContent='0'}
+initLogStream();
+
+// ===== 实时转写 =====
+let ws=null,recording=false,actx=null,proc=null;
+const micBtn=$('micBtn');
+micBtn.onclick=()=>recording?stopRec():startRec();
+
+async function startRec(){
+  if(!window.isSecureContext){
+    toast('麦克风需要 HTTPS 访问，请使用 https:// 或 localhost 打开页面','err',5000);
+    return;
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    toast('当前浏览器不支持麦克风 API','err');
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1,echoCancellation:true}});
+    const proto=location.protocol==='https:'?'wss:':'ws:';
+    ws=new WebSocket(`${proto}//${location.host}/ws/stream`);
+    ws.onopen=()=>{
+      ws.send(JSON.stringify({type:'config',model:'paraformer-streaming',language:'zh'}));
+    };
+    ws.onmessage=e=>{
+      const d=JSON.parse(e.data);
+      if(d.type==='config_ack'){
+        $('rtSt').textContent=`录音中... 模型: ${d.model}`;
+      }else if(d.type==='result'){
+        if(d.is_final){
+          if(d.accumulated)$('rtRst').value=d.accumulated+'\n';
+          $('rtSt').textContent='识别完成';
+        }else if(d.accumulated!==undefined){
+          $('rtRst').value=d.accumulated;
+        }
+        $('rtRst').scrollTop=$('rtRst').scrollHeight;
+      }
+    };
+
+    actx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    const src=actx.createMediaStreamSource(stream);
+    proc=actx.createScriptProcessor(4096,1,1);
+    proc.onaudioprocess=e=>{
+      if(!recording||!ws||ws.readyState!==1)return;
+      const f32=e.inputBuffer.getChannelData(0);
+      const i16=new Int16Array(f32.length);
+      for(let i=0;i<f32.length;i++)i16[i]=Math.max(-32768,Math.min(32767,f32[i]*32768));
+      const b64=btoa(String.fromCharCode(...new Uint8Array(i16.buffer)));
+      ws.send(JSON.stringify({type:'audio',data:b64}));
+    };
+    src.connect(proc);proc.connect(actx.destination);
+    micBtn._stream=stream;
+    recording=true;
+    micBtn.classList.add('rec');
+    $('micSt').textContent='录音中...点击停止';
+    $('rtSt').textContent='实时识别中';
+    $('rtSt').className='st-box rec';
+  }catch(err){
+    if(err.name==='NotAllowedError')toast('麦克风权限被拒绝，请在浏览器设置中允许','err',5000);
+    else if(err.name==='NotFoundError')toast('未检测到麦克风设备','err');
+    else toast('麦克风访问失败: '+err.message,'err',5000);
+  }
+}
+
+function stopRec(){
+  recording=false;
+  micBtn.classList.remove('rec');
+  $('micSt').textContent='点击麦克风开始录音';
+  $('rtSt').textContent='处理中...';
+  $('rtSt').className='st-box';
+  if(ws&&ws.readyState===1){
+    ws.send(JSON.stringify({type:'end'}));
+    setTimeout(()=>{if(ws)ws.close();ws=null;$('rtSt').textContent='识别完成'},3000);
+  }
+  if(proc){proc.disconnect();proc=null}
+  if(actx){actx.close();actx=null}
+  if(micBtn._stream){micBtn._stream.getTracks().forEach(t=>t.stop());micBtn._stream=null}
+}
+
+// ===== 离线识别 =====
+$('offBtn').onclick=async()=>{
+  const f=$('offFile').files[0];if(!f){toast('请选择文件','err');return}
+  const model=$('offModel').value,fmt=$('offFmt').value;
+  $('offBtn').disabled=true;$('offSt').textContent='识别中...';
+  const fd=new FormData();fd.append('file',f);fd.append('model',model);
+  fd.append('response_format',fmt==='json'?'verbose_json':fmt==='text'?'text':fmt);
+  try{
+    const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
+    if(!r.ok){const e=await r.json();throw new Error(e.error||e.detail||'请求失败')}
+    const d=await r.json();
+    let txt=d.text||'';
+    if(fmt==='json')txt=JSON.stringify(d,null,2);
+    $('offRst').value=txt;
+    const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    $('offDl').style.display='inline-block';
+    $('offDl').onclick=()=>{const a=document.createElement('a');a.href=url;a.download=f.name.replace(/\.[^.]+$/,`.${fmt==='text'?'txt':fmt}`);a.click()};
+    $('offSt').textContent='识别完成';toast('识别成功');
+  }catch(err){$('offSt').textContent='失败';toast(err.message,'err')}
+  finally{$('offBtn').disabled=false}
+};
+
+// ===== 说话人分离 =====
+$('spkBtn').onclick=async()=>{
+  const f=$('spkFile').files[0];if(!f){toast('请选择文件','err');return}
+  const model=$('spkModel').value;
+  $('spkBtn').disabled=true;$('spkSt').textContent='识别中...';
+  const fd=new FormData();fd.append('file',f);fd.append('model',model);fd.append('response_format','verbose_json');fd.append('enable_speaker_diarization','true');
+  try{
+    const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
+    if(!r.ok){const e=await r.json();throw new Error(e.error||e.detail||'失败')}
+    const d=await r.json();
+    let out='';
+    if(d.segments&&d.segments.length){
+      d.segments.forEach(s=>{
+        const spk=s.speaker!=null?`说话人 ${s.speaker}`:'未知';
+        out+=`[${spk}] [${s.start.toFixed(1)}s-${s.end.toFixed(1)}s] ${s.text}\n`;
+      });
+    }else{out=d.text||'无结果'}
+    $('spkRst').value=out;
+    if(d.segments&&d.segments.length){
+      let srt='';d.segments.forEach((s,i)=>{srt+=`${i+1}\n${fmtTime(s.start)} --> ${fmtTime(s.end)}\n${s.speaker!=null?'[说话人'+s.speaker+'] ':''}${s.text}\n\n`});
+      const blob=new Blob([srt],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);
+      $('spkDl').style.display='inline-block';
+      $('spkDl').onclick=()=>{const a=document.createElement('a');a.href=url;a.download=f.name.replace(/\.[^.]+$/,'.srt');a.click()};
+    }
+    $('spkSt').textContent='分离完成';toast('说话人分离完成');
+  }catch(err){$('spkSt').textContent='失败';toast(err.message,'err')}
+  finally{$('spkBtn').disabled=false}
+};
+function fmtTime(s){const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=Math.floor(s%60),ms=Math.floor((s%1)*1000);return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')},${String(ms).padStart(3,'0')}`}
+
+// ===== 情感检测 =====
+$('emoBtn').onclick=async()=>{
+  const f=$('emoFile').files[0];if(!f){toast('请选择文件','err');return}
+  $('emoBtn').disabled=true;$('emoSt').textContent='检测中...';
+  const fd=new FormData();fd.append('file',f);fd.append('model','sensevoice');fd.append('response_format','verbose_json');fd.append('enable_emotion_detection','true');
+  try{
+    const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
+    if(!r.ok){const e=await r.json();throw new Error(e.error||e.detail||'失败')}
+    const d=await r.json();
+    let out=`识别文本: ${d.text||'无'}\n\n`;
+    if(d.emotions&&d.emotions.length)out+=`整体情感: ${d.emotions.join(', ')}\n\n`;
+    if(d.segments)d.segments.forEach(s=>{out+=`[${s.start.toFixed(1)}s-${s.end.toFixed(1)}s]${s.emotions?' ['+s.emotions.join(',')+']':''} ${s.text}\n`});
+    $('emoRst').value=out;
+    $('emoSt').textContent='检测完成';toast('情感检测完成');
+  }catch(err){$('emoSt').textContent='失败';toast(err.message,'err')}
+  finally{$('emoBtn').disabled=false}
+};
+
+// ===== 模型管理 =====
+let currentConfig={auto_load_models:[],default_device:'mps',ncpu:0,max_loaded:2};
+const MODEL_NAMES={'paraformer-streaming':'Paraformer-Streaming','sensevoice':'SenseVoice-Small','paraformer':'Paraformer-zh','funasr-nano':'Fun-ASR-Nano'};
+
+async function loadConfig(){
+  try{
+    const r=await fetch('/v1/config');const d=await r.json();
+    currentConfig=d.data||currentConfig;
+    renderAutoLoad();
+  }catch(e){}
+}
+
+function renderAutoLoad(){
+  const el=$('autoLoadList');
+  const ids=Object.keys(MODEL_NAMES);
+  el.innerHTML=ids.map(id=>{
+    const checked=currentConfig.auto_load_models.includes(id)?'checked':'';
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;cursor:pointer">
+      <input type="checkbox" value="${id}" ${checked} style="accent-color:#3b82f6" onchange="toggleAutoLoad('${id}',this.checked)">
+      ${MODEL_NAMES[id]||id}
+    </label>`;
+  }).join('');
+}
+
+function toggleAutoLoad(id,checked){
+  if(checked&&!currentConfig.auto_load_models.includes(id))currentConfig.auto_load_models.push(id);
+  else if(!checked)currentConfig.auto_load_models=currentConfig.auto_load_models.filter(m=>m!==id);
+}
+
+$('btnSaveCfg').onclick=async()=>{
+  try{
+    const r=await fetch('/v1/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentConfig)});
+    const d=await r.json();
+    if(d.message)toast(d.message);
+    else toast('配置已保存');
+  }catch(e){toast('保存失败','err')}
+};
+
+async function refreshModels(){
+  try{
+    // 获取所有模型状态
+    const r=await fetch('/v1/models');const d=await r.json();
+    const ms=d.data||d;const tb=$('mtBody');tb.innerHTML='';
+    ms.forEach(m=>{
+      let b=m.loaded?'<span class="bl">已加载</span>':'<span class="bn">未加载</span>';
+      if(m.active)b='<span class="bd">活跃</span>';
+      if(m.device)b+=` <span style="color:#64748b;font-size:10px">${m.device}</span>`;
+      tb.innerHTML+=`<tr><td>${m.name}${m.streaming?' <span class="tag tag-stream">流式</span>':''}</td><td>${m.size}</td><td>${m.description}</td><td>${b}</td></tr>`;
+    });
+
+    // 获取已加载模型列表
+    const lr=await fetch('/v1/models/loaded');const ld=await lr.json();
+    const loaded=ld.data||ld;
+    const listEl=$('loadedList');const emptyEl=$('loadedEmpty');const badge=$('loadedBadge');
+    if(loaded.loaded&&loaded.loaded.length>0){
+      listEl.innerHTML='';
+      emptyEl.style.display='none';
+      badge.textContent=`${loaded.count}/${loaded.max}`;
+      badge.style.display='inline-block';
+      loaded.loaded.forEach(m=>{
+        const isActive=m.id===loaded.active;
+        const div=document.createElement('div');
+        div.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;margin-bottom:6px';
+        div.innerHTML=`
+          <span style="flex:1;font-size:12px;font-weight:500">${m.name}</span>
+          <span style="font-size:10px;color:#64748b">${m.device}</span>
+          ${isActive?'<span class="bd">活跃</span>':''}
+          <button class="btn btn-d btn-sm" onclick="unloadModel('${m.id}')">卸载</button>
+        `;
+        listEl.appendChild(div);
+      });
+    }else{
+      listEl.innerHTML='';
+      emptyEl.style.display='block';
+      badge.style.display='none';
+    }
+
+    // 更新资源概览
+    $('resCnt').textContent=`${loaded.count||0}/${loaded.max||2}`;
+    $('curM').textContent=loaded.active||'无';
+    const hr=await fetch('/health');const h=await hr.json();
+    $('curD').textContent=h.device||'-';
+    $('hdrSt').textContent=loaded.active?`模型: ${loaded.active}`:'就绪';
+  }catch(e){console.error('刷新模型状态失败',e)}
+}
+
+async function unloadModel(id){
+  try{
+    const r=await fetch(`/v1/models/${id}/unload`,{method:'POST'});const d=await r.json();
+    toast(d.message||'已卸载');refreshModels();
+  }catch(e){toast('卸载失败','err')}
+}
+
+$('btnRef').onclick=()=>{refreshModels();toast('已刷新')};
+$('btnLd').onclick=async()=>{
+  const id=$('mgM').value,dev=$('mgDev').value;
+  const btn=$('btnLd');const errEl=$('ldErr');
+  btn.disabled=true;btn.textContent='加载中...';errEl.style.display='none';
+  try{
+    const r=await fetch(`/v1/models/${id}/load`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev})});
+    const d=await r.json();
+    if(d.status==='success')toast('加载成功');
+    else{errEl.textContent=d.message||'加载失败';errEl.style.display='block';toast(d.message||'加载失败','err')}
+    refreshModels();
+  }catch(e){toast('加载失败','err')}
+  finally{btn.disabled=false;btn.textContent='加载模型'}
+};
+
+refreshModels();
+loadConfig();
+</script>
+</body>
+</html>
