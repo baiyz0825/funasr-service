@@ -86,13 +86,30 @@ set_ws_manager(model_manager)
 set_config_manager(model_manager)
 
 # 读取配置并自动加载模型
+# auto_load_models 支持两种格式:
+#   列表: ["model1", "model2"] → 使用 default_device
+#   字典: {"model1": "cuda", "model2": "cpu"} → 每个模型指定设备
 if startup_config.get("auto_load_models"):
-    for model_id in startup_config["auto_load_models"]:
-        device = startup_config.get("default_device", model_manager.current_device)
+    auto_load = startup_config["auto_load_models"]
+    default_device = startup_config.get("default_device", model_manager.current_device)
+
+    if isinstance(auto_load, dict):
+        load_list = [(mid, dev) for mid, dev in auto_load.items()]
+    else:
+        load_list = [(mid, default_device) for mid in auto_load]
+
+    for model_id, device in load_list:
         logger.info(f"自动加载模型: {model_id} → {device}")
         result = model_manager.load_model(model_id, device=device)
         if result["status"] == "success":
             logger.info(f"自动加载成功: {model_id}")
+        elif device != "cpu":
+            logger.warning(f"自动加载失败 ({device}): {result['message']}，尝试 CPU 推理...")
+            result = model_manager.load_model(model_id, device="cpu")
+            if result["status"] == "success":
+                logger.info(f"自动加载成功 (CPU fallback): {model_id}")
+            else:
+                logger.warning(f"CPU fallback 也失败: {model_id} - {result['message']}")
         else:
             logger.warning(f"自动加载失败: {model_id} - {result['message']}")
 

@@ -523,6 +523,10 @@ async function loadConfig(){
   try{
     const r=await fetch('/v1/config');const d=await r.json();
     currentConfig=d.data||currentConfig;
+    // 兼容字典格式的 auto_load_models → 转为列表给 UI checkbox
+    if(currentConfig.auto_load_models&&!Array.isArray(currentConfig.auto_load_models)){
+      currentConfig.auto_load_models=Object.keys(currentConfig.auto_load_models);
+    }
     renderAutoLoad();
   }catch(e){}
 }
@@ -547,12 +551,29 @@ function toggleAutoLoad(id,checked){
 $('btnSaveCfg').onclick=async()=>{
   const btn=$('btnSaveCfg');btn.disabled=true;btn.textContent='保存中...';
   try{
-    const r=await fetch('/v1/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentConfig)});
+    // 获取已加载模型的设备信息
+    let loadedDevices={};
+    try{
+      const lr=await fetch('/v1/models/loaded');const ld=await lr.json();
+      (ld.data||ld).forEach(m=>{loadedDevices[m.id]=m.device||currentConfig.default_device||'cuda'});
+    }catch(e){}
+
+    // 构建带设备信息的 auto_load_models（字典格式）
+    const autoLoadObj={};
+    currentConfig.auto_load_models.forEach(id=>{
+      autoLoadObj[id]=loadedDevices[id]||currentConfig.default_device||'cuda';
+    });
+
+    const saveData={...currentConfig,auto_load_models:autoLoadObj};
+    const r=await fetch('/v1/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(saveData)});
     const d=await r.json();
     if(r.ok&&d.data){
       toast('配置已保存');
-      // 从服务器重新读取，确保配置确实持久化
       currentConfig=d.data;
+      // 兼容：服务器返回的可能是字典格式，转回列表给 UI
+      if(typeof currentConfig.auto_load_models==='object'&&!Array.isArray(currentConfig.auto_load_models)){
+        currentConfig.auto_load_models=Object.keys(currentConfig.auto_load_models);
+      }
       renderAutoLoad();
     }else{
       toast(d.error||d.detail||'保存失败','err');
