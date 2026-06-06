@@ -123,8 +123,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
                             if res and res[0].get("text"):
                                 partial = res[0]["text"]
-                                # 流式 partial 是累积的（每次包含之前所有文本）
-                                accumulated_text = partial
+                                # 追加到累积文本（partial 是当前块的新文本）
+                                accumulated_text += partial
                                 await mgr.send_json({
                                     "type": "result",
                                     "text": partial,
@@ -173,11 +173,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                 encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                             )
                             if res and res[0].get("text"):
-                                accumulated_text = res[0]["text"]
+                                accumulated_text += res[0]["text"]
                         except Exception:
                             logger.exception("最终块识别异常")
 
-                    # flush 缓存，返回完整最终文本
+                    # flush 缓存
                     try:
                         res = asr.generate(
                             input=np.array([], dtype=np.float32),
@@ -186,7 +186,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                         )
                         if res and res[0].get("text"):
-                            accumulated_text = res[0]["text"]
+                            accumulated_text += res[0]["text"]
                     except Exception:
                         logger.exception("flush异常")
 
