@@ -6,6 +6,7 @@ import base64
 import tempfile
 import os
 import logging
+import time
 
 from ..models.model_manager import ModelManager
 
@@ -15,7 +16,8 @@ model_manager: ModelManager = None
 
 STREAMING_CHUNK_SIZE = [0, 10, 5]
 SAMPLE_RATE = 16000
-CHUNK_STRIDE = STREAMING_CHUNK_SIZE[1] * 960  # 9600
+CHUNK_STRIDE = STREAMING_CHUNK_SIZE[1] * 960  # 9600 samples = 600ms
+MAX_BUFFER_DURATION_S = 3.0  # 缓冲区上限：超过 3 秒丢弃旧音频，防止延迟堆积
 
 router = APIRouter()
 
@@ -108,11 +110,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 if is_streaming:
+                    # 缓冲区溢出保护：丢弃旧音频，始终处理最新数据
+                    max_samples = int(MAX_BUFFER_DURATION_S * SAMPLE_RATE)
+                    if len(audio_buffer) > max_samples:
+                        dropped = len(audio_buffer) - max_samples
+                        audio_buffer = audio_buffer[-max_samples:]
+                        logger.warning(f"缓冲区溢出，丢弃 {dropped/SAMPLE_RATE:.1f}s 旧音频")
+
                     while len(audio_buffer) >= CHUNK_STRIDE:
                         chunk_input = audio_buffer[:CHUNK_STRIDE]
                         audio_buffer = audio_buffer[CHUNK_STRIDE:]
 
                         try:
+                            t0 = time.monotonic()
                             res = asr.generate(
                                 input=chunk_input,
                                 cache=cache,
@@ -121,9 +131,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                 encoder_chunk_look_back=4,
                                 decoder_chunk_look_back=1,
                             )
+                            elapsed = time.monotonic() - t0
+                            if elapsed > 0.5:
+                                logger.warning(f"流式推理耗时 {elapsed:.2f}s (音频 0.6s)，CPU 可能跟不上实时")
                             if res and res[0].get("text"):
                                 partial = res[0]["text"]
-                                # 追加到累积文本（partial 是当前块的新文本）
                                 accumulated_text += partial
                                 await mgr.send_json({
                                     "type": "result",
@@ -143,7 +155,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                                 tmp_path = f.name
                             sf.write(tmp_path, audio_buffer, SAMPLE_RATE)
+                            t0 = time.monotonic()
                             res = asr.generate(input=tmp_path)
+                            elapsed = time.monotonic() - t0
+                            logger.info(f"非流式推理耗时 {elapsed:.2f}s (音频 {buf_dur:.1f}s)")
                             text = res[0].get("text", "") if res else ""
                             if text:
                                 accumulated_text += text
@@ -167,11 +182,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     # 发送剩余缓冲区
                     if len(audio_buffer) > 0:
                         try:
+                            t0 = time.monotonic()
                             res = asr.generate(
                                 input=audio_buffer, cache=cache, is_final=False,
                                 chunk_size=STREAMING_CHUNK_SIZE,
                                 encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                             )
+                            logger.info(f"最终块推理耗时 {time.monotonic()-t0:.2f}s")
                             if res and res[0].get("text"):
                                 accumulated_text += res[0]["text"]
                         except Exception:
@@ -179,12 +196,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # flush 缓存
                     try:
+                        t0 = time.monotonic()
                         res = asr.generate(
                             input=np.array([], dtype=np.float32),
                             cache=cache, is_final=True,
                             chunk_size=STREAMING_CHUNK_SIZE,
                             encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                         )
+                        logger.info(f"flush 推理耗时 {time.monotonic()-t0:.2f}s")
                         if res and res[0].get("text"):
                             accumulated_text += res[0]["text"]
                     except Exception:
