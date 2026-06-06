@@ -58,6 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
     is_streaming = False
     cache = {}
     accumulated_text = ""  # 累积的确认文本
+    last_partial = ""  # 流式模式：上一次 partial 文本（用于替换更新）
 
     try:
         while True:
@@ -80,6 +81,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 is_streaming = cfg.get("streaming", False)
                 cache = {}
                 accumulated_text = ""
+                last_partial = ""
 
                 await mgr.send_json({
                     "type": "config_ack",
@@ -118,11 +120,13 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
                             if res and res[0].get("text"):
                                 partial = res[0]["text"]
+                                # 流式 partial 是累积的（每次包含之前所有文本）
+                                accumulated_text = partial
                                 await mgr.send_json({
                                     "type": "result",
                                     "text": partial,
                                     "is_final": False,
-                                    "accumulated": accumulated_text + partial,
+                                    "accumulated": accumulated_text,
                                 }, websocket)
                         except Exception:
                             logger.exception("流式识别异常")
@@ -166,11 +170,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                 encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                             )
                             if res and res[0].get("text"):
-                                accumulated_text += res[0]["text"]
+                                accumulated_text = res[0]["text"]
                         except Exception:
                             logger.exception("最终块识别异常")
 
-                    # flush 缓存
+                    # flush 缓存，返回完整最终文本
                     try:
                         res = asr.generate(
                             input=np.array([], dtype=np.float32),
@@ -179,7 +183,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             encoder_chunk_look_back=4, decoder_chunk_look_back=1,
                         )
                         if res and res[0].get("text"):
-                            accumulated_text += res[0]["text"]
+                            accumulated_text = res[0]["text"]
                     except Exception:
                         logger.exception("flush异常")
 
@@ -211,6 +215,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 audio_buffer = np.array([], dtype=np.float32)
                 accumulated_text = ""
+                last_partial = ""
 
     except WebSocketDisconnect:
         logger.info("WebSocket 客户端断开")
