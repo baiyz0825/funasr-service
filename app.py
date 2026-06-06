@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import logging
+import subprocess
 from pathlib import Path
 
 # 日志配置
@@ -14,6 +15,42 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("funasr-service")
+
+
+def ensure_ssl_certs(cert_dir: Path) -> tuple[str, str] | None:
+    """确保 SSL 自签名证书存在，不存在则自动生成。返回 (cert, key) 路径，或 None（openssl 不可用时）。"""
+    cert_file = cert_dir / "ssl_cert.pem"
+    key_file = cert_dir / "ssl_key.pem"
+
+    if cert_file.exists() and key_file.exists():
+        logger.info(f"SSL 证书已存在: {cert_file}")
+        return str(cert_file), str(key_file)
+
+    logger.info("SSL 证书不存在，正在生成自签名证书...")
+    try:
+        subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", str(key_file),
+                "-out", str(cert_file),
+                "-days", "3650",
+                "-nodes",
+                "-subj", "/CN=funasr-service/O=FunASR/C=CN",
+                "-addext", "subjectAltName=IP:192.168.9.207,DNS:localhost,IP:127.0.0.1",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"SSL 证书已生成: {cert_file}")
+        return str(cert_file), str(key_file)
+    except FileNotFoundError:
+        logger.warning("openssl 未找到，无法生成 SSL 证书，服务将仅使用 HTTP")
+        return None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"生成 SSL 证书失败: {e.stderr}")
+        return None
+
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -104,13 +141,26 @@ async def index():
 
 
 if __name__ == "__main__":
+    # 自动生成 SSL 证书以支持 HTTPS（麦克风 API 需要安全上下文）
+    ssl_result = ensure_ssl_certs(Path(__file__).parent)
+    use_https = ssl_result is not None
+    protocol = "https" if use_https else "http"
+    ws_protocol = "wss" if use_https else "ws"
+
     logger.info("=" * 60)
     logger.info("FunASR 语音转写服务启动中...")
     logger.info(f"模型缓存目录: {MODELS_DIR}")
     logger.info(f"当前推理设备: {model_manager.current_device}")
-    logger.info(f"Web UI: http://localhost:7860")
-    logger.info(f"API 文档: http://localhost:7860/docs")
-    logger.info(f"WebSocket: ws://localhost:7860/ws/stream")
+    if use_https:
+        logger.info(f"SSL 证书: {ssl_result[0]}")
+    logger.info(f"Web UI: {protocol}://localhost:7860")
+    logger.info(f"API 文档: {protocol}://localhost:7860/docs")
+    logger.info(f"WebSocket: {ws_protocol}://localhost:7860/ws/stream")
     logger.info("=" * 60)
 
-    uvicorn.run(app, host="0.0.0.0", port=7860, log_level="info")
+    uvicorn_kwargs = dict(host="0.0.0.0", port=7860, log_level="info")
+    if use_https:
+        uvicorn_kwargs["ssl_certfile"] = ssl_result[0]
+        uvicorn_kwargs["ssl_keyfile"] = ssl_result[1]
+
+    uvicorn.run(app, **uvicorn_kwargs)

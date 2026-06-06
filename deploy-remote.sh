@@ -167,6 +167,8 @@ package_project() {
         --exclude='./models' \
         --exclude='*.tar.gz' \
         --exclude='funasr-service.log' \
+        --exclude='ssl_cert.pem' \
+        --exclude='ssl_key.pem' \
         -C "$(dirname "$0")" .
 
     PACKAGE_SIZE=$(du -h "$PACKAGE_FILE" | cut -f1)
@@ -265,8 +267,8 @@ create_systemd_service() {
     # 写入 systemd 服务文件
     ${SSH_CMD} "sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null" <<EOF
 [Unit]
-Description=FunASR 语音转写服务 - 基于 FunASR 的实时/离线语音识别，支持说话人分离和情感检测 (${DEVICE_INFO}) | Web UI: http://${SERVER_IP}:${SERVICE_PORT} | API Docs: http://${SERVER_IP}:${SERVICE_PORT}/docs | WebSocket: ws://${SERVER_IP}:${SERVICE_PORT}/ws/stream
-Documentation=http://${SERVER_IP}:${SERVICE_PORT}/docs
+Description=FunASR 语音转写服务 - 基于 FunASR 的实时/离线语音识别，支持说话人分离和情感检测 (${DEVICE_INFO}) | Web UI: https://${SERVER_IP}:${SERVICE_PORT} | API Docs: https://${SERVER_IP}:${SERVICE_PORT}/docs | WebSocket: wss://${SERVER_IP}:${SERVICE_PORT}/ws/stream
+Documentation=https://${SERVER_IP}:${SERVICE_PORT}/docs
 After=network.target
 Wants=network-online.target
 
@@ -340,10 +342,12 @@ print_summary() {
     echo "  服务端口:   ${SERVICE_PORT}"
     echo ""
     echo "  访问地址:"
-    echo "    Web UI:    http://${REMOTE_HOST}:${SERVICE_PORT}"
-    echo "    API 文档:  http://${REMOTE_HOST}:${SERVICE_PORT}/docs"
-    echo "    WebSocket: ws://${REMOTE_HOST}:${SERVICE_PORT}/ws/stream"
-    echo "    健康检查:  http://${REMOTE_HOST}:${SERVICE_PORT}/v1/health"
+    echo "    Web UI:    https://${REMOTE_HOST}:${SERVICE_PORT}"
+    echo "    API 文档:  https://${REMOTE_HOST}:${SERVICE_PORT}/docs"
+    echo "    WebSocket: wss://${REMOTE_HOST}:${SERVICE_PORT}/ws/stream"
+    echo "    健康检查:  https://${REMOTE_HOST}:${SERVICE_PORT}/v1/health"
+    echo ""
+    echo "  注意: 首次访问需在浏览器中接受自签名证书警告"
     echo ""
     echo "  管理命令:"
     echo "    查看状态:  ssh ${REMOTE_USER}@${REMOTE_HOST} 'sudo systemctl status ${SERVICE_NAME}'"
