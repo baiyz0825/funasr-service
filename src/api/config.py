@@ -30,10 +30,10 @@ def _detect_default_device() -> str:
 
 
 DEFAULT_CONFIG = {
-    "auto_load_models": [],
+    "auto_load_models": {},
     "default_device": _detect_default_device(),
     "ncpu": 0,
-    "max_loaded": 2,
+    "max_loaded": 0,
 }
 
 

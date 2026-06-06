@@ -21,8 +21,8 @@ env/
 *~
 
 # Models cache
-models/
-!models/.gitkeep
+/models/
+!/models/.gitkeep
 
 # Logs
 *.log

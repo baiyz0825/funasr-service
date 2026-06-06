@@ -13,6 +13,7 @@ soundfile>=0.12.0
 # 工具
 numpy>=1.24.0
 pydantic>=2.0.0
+psutil>=5.9.0
 
 # PyTorch（平台相关，建议通过 deploy.sh install 安装以选择正确的版本）
 # macOS/CPU: pip install torch torchvision torchaudio
