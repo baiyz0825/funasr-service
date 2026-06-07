@@ -47,15 +47,23 @@ class ModelManager:
 
         # FunASR 官方模型配置
         self.model_configs = {
-            "paraformer-streaming": {
-                "name": "Paraformer-zh-Streaming",
-                "alias": "paraformer-zh-streaming",
-                "size": "2.0GB",
-                "size_bytes": int(2.0 * 1024**3),
-                "description": "中文流式识别，600ms低延迟，实时转写专用",
-                "streaming": True,
-                "model_params": {},
-                "generate_params": {},
+            "sensevoice": {
+                "name": "SenseVoice-Small",
+                "alias": "iic/SenseVoiceSmall",
+                "size": "1.5GB",
+                "size_bytes": int(1.5 * 1024**3),
+                "description": "情感+音频事件检测，5种语言，极快，自带标点和ITN",
+                "streaming": False,
+                "model_params": {
+                    "vad_model": "fsmn-vad",
+                    "vad_kwargs": {"max_single_segment_time": 30000},
+                },
+                "generate_params": {
+                    "use_itn": True,
+                    "batch_size_s": 60,
+                    "merge_vad": True,
+                    "merge_length_s": 15,
+                },
             },
             "funasr-nano": {
                 "name": "Fun-ASR-MLT-Nano",

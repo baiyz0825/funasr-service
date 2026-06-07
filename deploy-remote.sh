@@ -19,6 +19,7 @@ REMOTE_DIR="/opt/funasr-service"
 REMOTE_USER=""
 REMOTE_HOST=""
 REMOTE_SSH_PORT="22"
+SSH_CONFIG=""
 
 print_info()    { echo -e "${GREEN}[INFO]${NC} $1"; }
 print_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -35,14 +36,19 @@ usage() {
     echo "参数:"
     echo "  user@host           远程服务器用户名和地址"
     echo ""
+    echo "参数:"
+    echo "  host                远程服务器 (user@host 或 SSH config 别名)"
+    echo ""
     echo "选项:"
     echo "  -p, --port PORT     SSH 端口 (默认: 22)"
     echo "  -d, --dir PATH      远程安装目录 (默认: /opt/funasr-service)"
     echo "  --service-port PORT 服务端口 (默认: 7860)"
+    echo "  --ssh-config PATH   SSH 配置文件路径 (默认: ~/.ssh/config)"
     echo "  -h, --help          显示帮助"
     echo ""
     echo "示例:"
     echo "  $0 root@192.168.1.100"
+    echo "  $0 dual-gpu-server --ssh-config ~/.ssh/config"
     echo "  $0 user@server.com -p 2222"
     echo "  $0 root@gpu-server -d /data/funasr --service-port 8080"
     echo ""
@@ -72,12 +78,24 @@ parse_args() {
                 REMOTE_DIR="$2"; shift 2 ;;
             --service-port)
                 SERVICE_PORT="$2"; shift 2 ;;
+            --ssh-config)
+                SSH_CONFIG="$2"; shift 2 ;;
             -h|--help)
                 usage; exit 0 ;;
             *)
                 print_error "未知参数: $1"; usage; exit 1 ;;
         esac
     done
+
+    # 自动检测 SSH config
+    if [[ -z "$SSH_CONFIG" ]] && [[ -f "$HOME/.ssh/config" ]]; then
+        # 检查 host 是否是 SSH config 中的别名（不含 @ 和 . 视为别名）
+        if [[ "$REMOTE_HOST" != *"@"* ]] && [[ "$REMOTE_HOST" != *"."* ]]; then
+            if grep -q "Host ${REMOTE_HOST}" "$HOME/.ssh/config" 2>/dev/null; then
+                SSH_CONFIG="$HOME/.ssh/config"
+            fi
+        fi
+    fi
 
     # 分离 user 和 host
     if [[ "$REMOTE_HOST" == *"@"* ]]; then
@@ -88,8 +106,15 @@ parse_args() {
     fi
 }
 
-SSH_CMD="ssh -p ${REMOTE_SSH_PORT} ${REMOTE_USER}@${REMOTE_HOST}"
-SCP_CMD="scp -P ${REMOTE_SSH_PORT}"
+# 构建 SSH/SCP 命令
+SSH_OPTS="-p ${REMOTE_SSH_PORT}"
+SCP_OPTS="-P ${REMOTE_SSH_PORT}"
+if [[ -n "$SSH_CONFIG" ]]; then
+    SSH_OPTS="-F ${SSH_CONFIG} ${SSH_OPTS}"
+    SCP_OPTS="-F ${SSH_CONFIG} ${SCP_OPTS}"
+fi
+SSH_CMD="ssh ${SSH_OPTS} ${REMOTE_USER}@${REMOTE_HOST}"
+SCP_CMD="scp ${SCP_OPTS}"
 
 # 检查 SSH 连接
 check_ssh() {

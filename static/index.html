@@ -248,7 +248,7 @@ pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:
         <h3>加载新模型</h3>
         <div style="margin-bottom:8px"><label>选择模型</label>
           <select id="mgM">
-            <option value="paraformer-streaming">Paraformer-Streaming (2.0GB, 流式实时)</option>
+            <option value="sensevoice">SenseVoice-Small (1.5GB, 情感+事件)</option>
             <option value="funasr-nano">Fun-ASR-MLT-Nano (2.0GB, 31种语言高精度)</option>
           </select>
         </div>
@@ -500,7 +500,7 @@ $('emoBtn').onclick=async()=>{
 
 // ===== 模型管理 =====
 let currentConfig={auto_load_models:[],default_device:'mps',ncpu:0,max_loaded:2};
-const MODEL_NAMES={'paraformer-streaming':'Paraformer-Streaming','funasr-nano':'Fun-ASR-MLT-Nano'};
+const MODEL_NAMES={'sensevoice':'SenseVoice-Small','funasr-nano':'Fun-ASR-MLT-Nano'};
 
 async function loadConfig(){
   try{
