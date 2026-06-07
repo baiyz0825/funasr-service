@@ -42,8 +42,10 @@ def set_model_manager(manager: ModelManager):
     model_manager = manager
 
 
+from typing import List, Optional, Union, Dict
+
 class ConfigPayload(BaseModel):
-    auto_load_models: Optional[List[str]] = None
+    auto_load_models: Optional[Union[List[str], Dict[str, str]]] = None
     default_device: Optional[str] = None
     ncpu: Optional[int] = None
     max_loaded: Optional[int] = None
@@ -65,18 +67,27 @@ class ConfigPayload(BaseModel):
     @field_validator("max_loaded")
     @classmethod
     def validate_max_loaded(cls, v):
-        if v is not None and (v < 1 or v > 4):
-            raise ValueError("max_loaded 必须在 1-4 之间")
+        if v is not None and (v < 0 or v > 4):
+            raise ValueError("max_loaded 必须在 0-4 之间")
         return v
 
     @field_validator("auto_load_models")
     @classmethod
     def validate_auto_load_models(cls, v):
-        # 基础校验：列表项为非空字符串
-        if v is not None:
-            for mid in v:
+        if v is None:
+            return v
+        # 支持 list 或 dict 格式
+        if isinstance(v, dict):
+            for mid, device in v.items():
                 if not mid or not isinstance(mid, str):
                     raise ValueError("模型ID不能为空")
+                if device not in VALID_DEVICES:
+                    raise ValueError(f"设备 {device} 必须是 {VALID_DEVICES} 之一")
+            return v
+        # list 格式
+        for mid in v:
+            if not mid or not isinstance(mid, str):
+                raise ValueError("模型ID不能为空")
         return v
 
 
@@ -124,7 +135,9 @@ async def update_config(payload: ConfigPayload):
         if not model_manager:
             return JSONResponse(status_code=500, content={"error": "模型管理器未初始化"})
         valid_ids = set(model_manager.model_configs.keys())
-        for mid in payload.auto_load_models:
+        # 支持 dict 和 list 两种格式
+        model_ids = payload.auto_load_models.keys() if isinstance(payload.auto_load_models, dict) else payload.auto_load_models
+        for mid in model_ids:
             if mid not in valid_ids:
                 return JSONResponse(
                     status_code=400,
