@@ -18,6 +18,7 @@ STREAMING_CHUNK_SIZE = [0, 10, 5]
 SAMPLE_RATE = 16000
 CHUNK_STRIDE = STREAMING_CHUNK_SIZE[1] * 960  # 9600 samples = 600ms
 MAX_BUFFER_DURATION_S = 3.0  # 缓冲区上限：超过 3 秒丢弃旧音频，防止延迟堆积
+OFFLINE_BUFFER_S = 1.0  # 非流式模型：累积 1 秒后触发识别（伪流式）
 
 router = APIRouter()
 
@@ -51,19 +52,19 @@ def _decode_pcm(b64: str) -> np.ndarray:
 
 
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket 流式识别
+    """WebSocket 语音识别
 
     协议: config → audio* → end
-    返回: result {text, is_final, accumulated}
+    客户端无需指定模型，使用服务端当前加载的模型。
+    流式/非流式行为由已加载模型自动决定。
     """
     await mgr.connect(websocket)
 
     audio_buffer = np.array([], dtype=np.float32)
-    current_model_id = None
     is_streaming = False
     cache = {}
-    accumulated_text = ""  # 累积的确认文本
-    last_partial = ""  # 流式模式：上一次 partial 文本（用于替换更新）
+    accumulated_text = ""
+    configured = False
 
     try:
         while True:
@@ -72,29 +73,30 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = msg.get("type", "")
 
             if msg_type == "config":
-                req_model = msg.get("model", "sensevoice")
+                # 检查是否有已加载的模型
+                if not model_manager.active_model:
+                    await mgr.send_json({"type": "error", "message": "没有已加载的模型，请先在管理页面加载模型"}, websocket)
+                    continue
 
-                # 确保模型已加载
-                if model_manager.active_model != req_model:
-                    result = model_manager.load_model(req_model)
-                    if result["status"] != "success":
-                        await mgr.send_json({"type": "error", "message": result["message"]}, websocket)
-                        continue
-
-                current_model_id = req_model
-                cfg = model_manager.model_configs.get(req_model, {})
+                active_id = model_manager.active_model
+                cfg = model_manager.model_configs.get(active_id, {})
                 is_streaming = cfg.get("streaming", False)
                 cache = {}
                 accumulated_text = ""
-                last_partial = ""
+                configured = True
 
                 await mgr.send_json({
                     "type": "config_ack",
-                    "model": req_model,
+                    "model": active_id,
+                    "model_name": cfg.get("name", active_id),
                     "streaming": is_streaming,
                 }, websocket)
 
             elif msg_type == "audio":
+                if not configured:
+                    await mgr.send_json({"type": "error", "message": "请先发送 config 消息"}, websocket)
+                    continue
+
                 audio_b64 = msg.get("data", "")
                 if not audio_b64:
                     continue
@@ -110,7 +112,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 if is_streaming:
-                    # 缓冲区溢出保护：丢弃旧音频，始终处理最新数据
+                    # 真流式：paraformer-streaming
                     max_samples = int(MAX_BUFFER_DURATION_S * SAMPLE_RATE)
                     if len(audio_buffer) > max_samples:
                         dropped = len(audio_buffer) - max_samples
@@ -147,8 +149,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             logger.exception("流式识别异常")
 
                 else:
+                    # 伪流式：累积 OFFLINE_BUFFER_S 秒后触发识别
                     buf_dur = len(audio_buffer) / SAMPLE_RATE
-                    if buf_dur >= 2.0:
+                    if buf_dur >= OFFLINE_BUFFER_S:
                         tmp_path = None
                         try:
                             import soundfile as sf
@@ -158,7 +161,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             t0 = time.monotonic()
                             res = asr.generate(input=tmp_path)
                             elapsed = time.monotonic() - t0
-                            logger.info(f"非流式推理耗时 {elapsed:.2f}s (音频 {buf_dur:.1f}s)")
+                            logger.info(f"伪流式推理耗时 {elapsed:.2f}s (音频 {buf_dur:.1f}s)")
                             text = res[0].get("text", "") if res else ""
                             if text:
                                 accumulated_text += text
@@ -237,7 +240,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 audio_buffer = np.array([], dtype=np.float32)
                 accumulated_text = ""
-                last_partial = ""
 
     except WebSocketDisconnect:
         logger.info("WebSocket 客户端断开")
@@ -251,8 +253,10 @@ WS_PROTOCOL_DOC = {
     "endpoint": "/ws/stream",
     "protocol": "WebSocket",
     "description": (
-        "实时流式语音识别 WebSocket 接口。\n\n"
+        "实时语音识别 WebSocket 接口。\n\n"
         "连接地址: `ws://host:7860/ws/stream`（或 `wss://` 如已启用 HTTPS）\n\n"
+        "客户端无需指定模型，使用服务端当前加载的模型。"
+        "流式/非流式行为由已加载模型自动决定。\n\n"
         "## 通信流程\n\n"
         "```\n"
         "客户端 → 服务端: config (JSON)\n"
@@ -265,9 +269,9 @@ WS_PROTOCOL_DOC = {
         "## 客户端消息\n\n"
         "### 1. config（必须第一条）\n"
         "```json\n"
-        '{"type": "config", "model": "paraformer-streaming"}\n'
+        '{"type": "config"}\n'
         "```\n"
-        "- `model`: 模型 ID，可选 `sensevoice` / `paraformer` / `paraformer-streaming` / `funasr-nano`\n\n"
+        "无需指定模型，使用服务端已加载的模型。\n\n"
         "### 2. audio（音频数据，重复发送）\n"
         "```json\n"
         '{"type": "audio", "data": "<base64 编码的 PCM int16 音频>"}\n'
@@ -277,7 +281,7 @@ WS_PROTOCOL_DOC = {
         "- **重要**: `AudioContext({ sampleRate: 16000 })` 仅为 hint，多数浏览器实际使用 48kHz。"
         "客户端**必须**检测实际采样率并在发送前重采样到 16kHz，否则音频会被拉伸/压缩，导致识别完全错误\n"
         "- 流式模型: 每 600ms (9600 采样点) 处理一次\n"
-        "- 非流式模型: 缓冲 2 秒后处理\n\n"
+        "- 非流式模型: 缓冲 1 秒后处理（伪流式）\n\n"
         "### 3. end（结束识别）\n"
         "```json\n"
         '{"type": "end"}\n'
@@ -285,7 +289,7 @@ WS_PROTOCOL_DOC = {
         "## 服务端消息\n\n"
         "### config_ack（配置确认）\n"
         "```json\n"
-        '{"type": "config_ack", "model": "paraformer-streaming", "streaming": true}\n'
+        '{"type": "config_ack", "model": "paraformer-streaming", "model_name": "Paraformer-zh-Streaming", "streaming": true}\n'
         "```\n\n"
         "### result（识别结果）\n"
         "```json\n"
@@ -298,71 +302,36 @@ WS_PROTOCOL_DOC = {
         "```json\n"
         '{"type": "error", "message": "错误描述"}\n'
         "```\n\n"
-        "## JavaScript 示例\n\n"
-        "```javascript\n"
-        "// 1. 连接并配置\n"
-        "const ws = new WebSocket('wss://host:7860/ws/stream');\n"
-        "ws.onopen = () => {\n"
-        "    ws.send(JSON.stringify({type: 'config', model: 'paraformer-streaming'}));\n"
-        "};\n"
-        "ws.onmessage = (e) => {\n"
-        "    const d = JSON.parse(e.data);\n"
-        '    if (d.type === "result") console.log("识别:", d.accumulated);\n'
-        "};\n\n"
-        "// 2. 采集音频并重采样到 16kHz\n"
-        "const audioCtx = new AudioContext(); // 不要用 { sampleRate: 16000 }，那是 hint\n"
-        "const ACTUAL_RATE = audioCtx.sampleRate; // 通常 48000\n"
-        "const TARGET_RATE = 16000;\n"
-        "const stream = await navigator.mediaDevices.getUserMedia({audio: true});\n"
-        "const source = audioCtx.createMediaStreamSource(stream);\n"
-        "const proc = audioCtx.createScriptProcessor(4096, 1, 1);\n"
-        "proc.onaudioprocess = (e) => {\n"
-        "    const input = e.inputBuffer.getChannelData(0);\n"
-        "    // 重采样: 48kHz → 16kHz\n"
-        "    const ratio = ACTUAL_RATE / TARGET_RATE;\n"
-        "    const len = Math.floor(input.length / ratio);\n"
-        "    const resampled = new Float32Array(len);\n"
-        "    for (let i = 0; i < len; i++) {\n"
-        "        const idx = i * ratio;\n"
-        "        const lo = Math.floor(idx);\n"
-        "        resampled[i] = input[lo] * (1 - idx + lo) + input[lo + 1] * (idx - lo);\n"
-        "    }\n"
-        "    // Float32 → Int16 → base64\n"
-        "    const i16 = new Int16Array(len);\n"
-        "    for (let i = 0; i < len; i++) i16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));\n"
-        "    const b64 = btoa(String.fromCharCode(...new Uint8Array(i16.buffer)));\n"
-        "    ws.send(JSON.stringify({type: 'audio', data: b64}));\n"
-        "};\n"
-        "source.connect(proc); proc.connect(audioCtx.destination);\n\n"
-        "// 3. 结束\n"
-        "ws.send(JSON.stringify({type: 'end'}));\n"
-        "```"
+        "## 可用模型\n\n"
+        "通过管理页面加载模型，客户端无需关心模型选择。\n\n"
+        "| 模型 | 流式 | 说明 |\n"
+        "| --- | --- | --- |\n"
+        "| paraformer-streaming | 是 (600ms) | 中文实时识别，低延迟 |\n"
+        "| funasr-nano | 否 (伪流式 1s) | 31种语言，高精度，自带标点 |\n"
     ),
     "tags": ["WebSocket"],
     "messages": {
         "client": [
-            {"type": "config", "fields": {"model": "string (模型ID，必填)"}},
+            {"type": "config", "fields": {}},
             {"type": "audio", "fields": {"data": "string (base64 编码的 16kHz PCM int16 音频)"}},
             {"type": "end", "fields": {}},
         ],
         "server": [
-            {"type": "config_ack", "fields": {"model": "string", "streaming": "boolean"}},
+            {"type": "config_ack", "fields": {"model": "string", "model_name": "string", "streaming": "boolean"}},
             {"type": "result", "fields": {"text": "string", "is_final": "boolean", "accumulated": "string"}},
             {"type": "error", "fields": {"message": "string"}},
         ],
     },
     "models": [
-        {"id": "sensevoice", "name": "SenseVoice-Small", "streaming": False, "size": "1.5GB"},
-        {"id": "paraformer", "name": "Paraformer-zh", "streaming": False, "size": "2.0GB"},
         {"id": "paraformer-streaming", "name": "Paraformer-zh-Streaming", "streaming": True, "size": "2.0GB"},
-        {"id": "funasr-nano", "name": "Fun-ASR-Nano", "streaming": False, "size": "3.0GB"},
+        {"id": "funasr-nano", "name": "Fun-ASR-MLT-Nano", "streaming": False, "size": "2.0GB"},
     ],
 }
 
 
 @router.get(
     "/ws/info",
-    summary="WebSocket 流式识别协议文档",
+    summary="WebSocket 识别协议文档",
     description=(
         "返回 `/ws/stream` WebSocket 接口的完整协议文档，包括消息格式、"
         "通信流程、可用模型和代码示例。"

@@ -184,13 +184,6 @@ pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:
       <div class="card">
         <h3>离线语音识别</h3>
         <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="offFile" accept="audio/*,.wav,.mp3,.m4a,.flac" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
-        <div style="margin-bottom:8px"><label>识别模型</label>
-          <select id="offModel">
-            <option value="paraformer">Paraformer-zh (中文高精度)</option>
-            <option value="sensevoice">SenseVoice (情感+事件)</option>
-            <option value="funasr-nano">Fun-ASR-Nano (31种语言)</option>
-          </select>
-        </div>
         <div style="margin-bottom:8px"><label>输出格式</label>
           <select id="offFmt">
             <option value="text">纯文本</option>
@@ -218,13 +211,6 @@ pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:
       <div class="card">
         <h3>说话人分离</h3>
         <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="spkFile" accept="audio/*,.wav,.mp3,.m4a" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
-        <div style="margin-bottom:8px"><label>识别模型</label>
-          <select id="spkModel">
-            <option value="sensevoice">SenseVoice + cam++ (推荐)</option>
-            <option value="paraformer">Paraformer + cam++</option>
-            <option value="funasr-nano">Fun-ASR-Nano + cam++</option>
-          </select>
-        </div>
         <button class="btn btn-p" id="spkBtn" style="width:100%">开始分离</button>
         <div class="st-box" id="spkSt" style="margin-top:8px">等待上传...</div>
       </div>
@@ -242,7 +228,7 @@ pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:
   <div class="row">
     <div class="col">
       <div class="card">
-        <h3>情感检测 <span class="tag tag-offline">SenseVoice</span></h3>
+        <h3>情感检测 <span class="tag tag-offline">需模型支持</span></h3>
         <div style="margin-bottom:8px"><label>音频文件</label><input type="file" id="emoFile" accept="audio/*,.wav,.mp3,.m4a" style="width:100%;padding:5px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:11px"></div>
         <button class="btn btn-p" id="emoBtn" style="width:100%">检测情感</button>
         <div class="st-box" id="emoSt" style="margin-top:8px">等待上传...</div>
@@ -262,10 +248,8 @@ pre{background:#0f172a;padding:10px;border-radius:4px;overflow-x:auto;font-size:
         <h3>加载新模型</h3>
         <div style="margin-bottom:8px"><label>选择模型</label>
           <select id="mgM">
-            <option value="paraformer-streaming">Paraformer-Streaming (2.0GB, 流式)</option>
-            <option value="sensevoice">SenseVoice-Small (1.5GB, 情感+事件)</option>
-            <option value="paraformer">Paraformer-zh (2.0GB, 中文高精度)</option>
-            <option value="funasr-nano">Fun-ASR-Nano (3.0GB, 31种语言)</option>
+            <option value="paraformer-streaming">Paraformer-Streaming (2.0GB, 流式实时)</option>
+            <option value="funasr-nano">Fun-ASR-MLT-Nano (2.0GB, 31种语言高精度)</option>
           </select>
         </div>
         <div style="margin-bottom:8px"><label>推理设备</label>
@@ -387,12 +371,12 @@ async function startRec(){
     const proto=location.protocol==='https:'?'wss:':'ws:';
     ws=new WebSocket(`${proto}//${location.host}/ws/stream`);
     ws.onopen=()=>{
-      ws.send(JSON.stringify({type:'config',model:'paraformer-streaming',language:'zh'}));
+      ws.send(JSON.stringify({type:'config'}));
     };
     ws.onmessage=e=>{
       const d=JSON.parse(e.data);
       if(d.type==='config_ack'){
-        $('rtSt').textContent=`录音中... 模型: ${d.model}`;
+        $('rtSt').textContent=`录音中... 模型: ${d.model_name||d.model}`;
       }else if(d.type==='result'){
         if(d.is_final){
           if(d.accumulated)$('rtRst').value=d.accumulated+'\n';
@@ -447,9 +431,9 @@ function stopRec(){
 // ===== 离线识别 =====
 $('offBtn').onclick=async()=>{
   const f=$('offFile').files[0];if(!f){toast('请选择文件','err');return}
-  const model=$('offModel').value,fmt=$('offFmt').value;
+  const fmt=$('offFmt').value;
   $('offBtn').disabled=true;$('offSt').textContent='识别中...';
-  const fd=new FormData();fd.append('file',f);fd.append('model',model);
+  const fd=new FormData();fd.append('file',f);
   fd.append('response_format',fmt==='json'?'verbose_json':fmt==='text'?'text':fmt);
   try{
     const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
@@ -470,9 +454,8 @@ $('offBtn').onclick=async()=>{
 // ===== 说话人分离 =====
 $('spkBtn').onclick=async()=>{
   const f=$('spkFile').files[0];if(!f){toast('请选择文件','err');return}
-  const model=$('spkModel').value;
   $('spkBtn').disabled=true;$('spkSt').textContent='识别中...';
-  const fd=new FormData();fd.append('file',f);fd.append('model',model);fd.append('response_format','verbose_json');fd.append('enable_speaker_diarization','true');
+  const fd=new FormData();fd.append('file',f);fd.append('response_format','verbose_json');fd.append('enable_speaker_diarization','true');
   try{
     const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
     if(!r.ok){const e=await r.json();throw new Error(e.error||e.detail||'失败')}
@@ -501,7 +484,7 @@ function fmtTime(s){const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=Math.
 $('emoBtn').onclick=async()=>{
   const f=$('emoFile').files[0];if(!f){toast('请选择文件','err');return}
   $('emoBtn').disabled=true;$('emoSt').textContent='检测中...';
-  const fd=new FormData();fd.append('file',f);fd.append('model','sensevoice');fd.append('response_format','verbose_json');fd.append('enable_emotion_detection','true');
+  const fd=new FormData();fd.append('file',f);fd.append('response_format','verbose_json');fd.append('enable_emotion_detection','true');
   try{
     const r=await fetch('/v1/audio/transcriptions',{method:'POST',body:fd});
     if(!r.ok){const e=await r.json();throw new Error(e.error||e.detail||'失败')}
@@ -517,7 +500,7 @@ $('emoBtn').onclick=async()=>{
 
 // ===== 模型管理 =====
 let currentConfig={auto_load_models:[],default_device:'mps',ncpu:0,max_loaded:2};
-const MODEL_NAMES={'paraformer-streaming':'Paraformer-Streaming','sensevoice':'SenseVoice-Small','paraformer':'Paraformer-zh','funasr-nano':'Fun-ASR-Nano'};
+const MODEL_NAMES={'paraformer-streaming':'Paraformer-Streaming','funasr-nano':'Fun-ASR-MLT-Nano'};
 
 async function loadConfig(){
   try{

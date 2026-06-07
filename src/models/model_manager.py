@@ -47,38 +47,6 @@ class ModelManager:
 
         # FunASR 官方模型配置
         self.model_configs = {
-            "sensevoice": {
-                "name": "SenseVoice-Small",
-                "alias": "iic/SenseVoiceSmall",
-                "size": "1.5GB",
-                "size_bytes": int(1.5 * 1024**3),
-                "description": "情感+音频事件检测，5种语言，极快",
-                "streaming": False,
-                "model_params": {
-                    "vad_model": "fsmn-vad",
-                    "vad_kwargs": {"max_single_segment_time": 30000},
-                },
-                "generate_params": {
-                    "use_itn": True,
-                    "batch_size_s": 60,
-                    "merge_vad": True,
-                    "merge_length_s": 15,
-                },
-            },
-            "paraformer": {
-                "name": "Paraformer-zh",
-                "alias": "paraformer-zh",
-                "size": "2.0GB",
-                "size_bytes": int(2.0 * 1024**3),
-                "description": "中文生产级识别，适合长音频",
-                "streaming": False,
-                "model_params": {
-                    "vad_model": "fsmn-vad",
-                    "vad_kwargs": {"max_single_segment_time": 60000},
-                    "punc_model": "ct-punc",
-                },
-                "generate_params": {"batch_size_s": 300},
-            },
             "paraformer-streaming": {
                 "name": "Paraformer-zh-Streaming",
                 "alias": "paraformer-zh-streaming",
@@ -90,11 +58,11 @@ class ModelManager:
                 "generate_params": {},
             },
             "funasr-nano": {
-                "name": "Fun-ASR-Nano",
-                "alias": "FunAudioLLM/Fun-ASR-Nano-2512",
-                "size": "3.0GB",
-                "size_bytes": int(3.0 * 1024**3),
-                "description": "31种语言高精度，自带标点",
+                "name": "Fun-ASR-MLT-Nano",
+                "alias": "FunAudioLLM/Fun-ASR-MLT-Nano-2512",
+                "size": "2.0GB",
+                "size_bytes": int(2.0 * 1024**3),
+                "description": "800M参数，31种语言+7种方言，自带ITN和标点，支持翻译和代码切换，中文CER 1.22%",
                 "streaming": False,
                 "model_params": {
                     "trust_remote_code": True,
