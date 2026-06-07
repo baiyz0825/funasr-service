@@ -106,15 +106,17 @@ parse_args() {
     fi
 }
 
-# 构建 SSH/SCP 命令
-SSH_OPTS="-p ${REMOTE_SSH_PORT}"
-SCP_OPTS="-P ${REMOTE_SSH_PORT}"
-if [[ -n "$SSH_CONFIG" ]]; then
-    SSH_OPTS="-F ${SSH_CONFIG} ${SSH_OPTS}"
-    SCP_OPTS="-F ${SSH_CONFIG} ${SCP_OPTS}"
-fi
-SSH_CMD="ssh ${SSH_OPTS} ${REMOTE_USER}@${REMOTE_HOST}"
-SCP_CMD="scp ${SCP_OPTS}"
+# 构建 SSH/SCP 命令（必须在 parse_args 之后调用）
+build_ssh_cmd() {
+    SSH_OPTS="-p ${REMOTE_SSH_PORT}"
+    SCP_OPTS="-P ${REMOTE_SSH_PORT}"
+    if [[ -n "$SSH_CONFIG" ]]; then
+        SSH_OPTS="-F ${SSH_CONFIG} ${SSH_OPTS}"
+        SCP_OPTS="-F ${SSH_CONFIG} ${SCP_OPTS}"
+    fi
+    SSH_CMD="ssh ${SSH_OPTS} ${REMOTE_USER}@${REMOTE_HOST}"
+    SCP_CMD="scp ${SCP_OPTS}"
+}
 
 # 检查 SSH 连接
 check_ssh() {
@@ -220,7 +222,7 @@ upload_to_remote() {
 install_remote_deps() {
     print_step "在远程服务器安装依赖..."
 
-    ${SSH_CMD} bash -s "$REMOTE_DIR" <<'REMOTE_SCRIPT'
+    ${SSH_CMD} -- bash -s "$REMOTE_DIR" <<'REMOTE_SCRIPT'
 set -e
 INSTALL_DIR="$1"
 
@@ -296,6 +298,8 @@ Description=FunASR 语音转写服务 - 基于 FunASR 的实时/离线语音识�
 Documentation=https://${SERVER_IP}:${SERVICE_PORT}/docs
 After=network.target
 Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -305,13 +309,12 @@ WorkingDirectory=${REMOTE_DIR}
 ExecStart=${PYTHON_PATH} app.py
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # 环境变量
 Environment=PYTHONUNBUFFERED=1
 Environment=MODELSCOPE_CACHE=${REMOTE_DIR}/models
 Environment=HF_HOME=${REMOTE_DIR}/models/hf
+Environment=HF_ENDPOINT=https://hf-mirror.com
 
 # 资源限制
 LimitNOFILE=65536
@@ -363,7 +366,7 @@ print_summary() {
     echo ""
     echo "  服务器:     ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_SSH_PORT}"
     echo "  安装目录:   ${REMOTE_DIR}"
-    echo "  推理设备:   ${REMOTE_DEVICE^^}"
+    echo "  推理设备:   $(echo "${REMOTE_DEVICE}" | tr '[:lower:]' '[:upper:]')"
     echo "  服务端口:   ${SERVICE_PORT}"
     echo ""
     echo "  访问地址:"
@@ -396,6 +399,7 @@ cleanup() {
 # 主流程
 main() {
     parse_args "$@"
+    build_ssh_cmd
 
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════╗"

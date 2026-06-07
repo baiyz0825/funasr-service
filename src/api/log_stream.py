@@ -41,8 +41,15 @@ def setup_log_streaming():
     """在 app 启动时调用，挂载 SSE handler 到 root logger"""
     handler = SSELogHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
-    handler.setLevel(logging.INFO)
-    logging.getLogger().addHandler(handler)
+    # 捕获所有级别日志，确保前端能看到完整日志
+    handler.setLevel(logging.DEBUG)
+
+    # 挂载到 root logger，捕获所有模块的日志
+    root = logging.getLogger()
+    root.addHandler(handler)
+    # 确保 root logger 级别足够低，让 SSE handler 能收到所有记录
+    if root.level > logging.DEBUG:
+        root.setLevel(logging.DEBUG)
 
 
 @router.get(

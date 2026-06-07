@@ -7,12 +7,19 @@ import multiprocessing
 
 logger = logging.getLogger("funasr-service.model_manager")
 
+# 兼容性补丁：PyTorch < 2.6 缺少 float8_e8m0fnu dtype，transformers 4.48+ 需要它
+# 用 torch.uint8 作为占位符，避免升级整个 PyTorch（仅影响 FP8 量化，本服务不使用）
+if not hasattr(torch, "float8_e8m0fnu"):
+    torch.float8_e8m0fnu = torch.uint8
+
 # FunASR AutoModel 不支持 cache_dir 参数，需要通过环境变量控制下载目录
 # MODELSCOPE_CACHE 控制 ModelScope 模型下载路径，HF_HOME 控制 HuggingFace 模型
 _DEFAULT_MODELS_DIR = Path(__file__).parent.parent.parent / "models"
 _MODELS_DIR = _DEFAULT_MODELS_DIR
 os.environ.setdefault("MODELSCOPE_CACHE", str(_MODELS_DIR))
 os.environ.setdefault("HF_HOME", str(_MODELS_DIR / "hf"))
+# HuggingFace 镜像加速（国内网络环境）
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 
 class ModelManager:
@@ -37,6 +44,7 @@ class ModelManager:
         # 必须在 import funasr 之前设置
         os.environ["MODELSCOPE_CACHE"] = str(self.models_dir)
         os.environ["HF_HOME"] = str(self.models_dir / "hf")
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
         # max_loaded: 0=自动计算（根据 GPU 显存或 CPU 内存），1-4=手动指定
         if max_loaded <= 0:
@@ -75,9 +83,9 @@ class ModelManager:
                 "model_params": {
                     "trust_remote_code": True,
                     "remote_code": "./model.py",
+                    "hub": "hf",
                     "vad_model": "fsmn-vad",
                     "vad_kwargs": {"max_single_segment_time": 30000},
-                    "hub": "hf",
                 },
                 "generate_params": {"batch_size": 1},
             },

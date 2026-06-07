@@ -5,6 +5,12 @@ import logging
 import subprocess
 from pathlib import Path
 
+# PyTorch 兼容性补丁：必须在 import transformers 之前执行
+# torch < 2.6 缺少 float8_e8m0fnu，transformers 4.48+ 需要它
+import torch
+if not hasattr(torch, "float8_e8m0fnu"):
+    torch.float8_e8m0fnu = torch.uint8
+
 # 日志配置
 logging.basicConfig(
     level=logging.DEBUG,
@@ -142,8 +148,11 @@ app.include_router(config_router)
 app.include_router(ws_router)
 app.add_api_websocket_route("/ws/stream", websocket_endpoint)
 
-# 启动日志 SSE 推送
-setup_log_streaming()
+# 日志 SSE 推送在 startup 事件中初始化，确保在 uvicorn 日志配置之后执行
+@app.on_event("startup")
+async def _init_log_streaming():
+    setup_log_streaming()
+    logger.info("SSE 日志流已启动")
 
 # 静态文件
 static_dir = Path(__file__).parent / "static"
